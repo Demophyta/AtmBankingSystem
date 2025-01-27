@@ -23,6 +23,8 @@ public class Main{
         // Attempt to establish a connection to the database
         try (Connection connect = DriverManager.getConnection(url, username, password)) {
             System.out.println("Welcome to our ATM banking system!");
+            // Create a User instance and pass the database connection
+            User user = new User(connect);
 
             // Main application loop
             while (true) {
@@ -37,15 +39,16 @@ public class Main{
                 int choice = scanner.nextInt();
                 scanner.nextLine(); // Consume newline character to avoid input issues
 
+
                 // Handle user choice using a switch statement
                 switch (choice) {
                     case 1:
                         // Call the method to handle user registration
-                        User.handleRegistration(connect);
+                        user.handleRegistration();
                         break;
                     case 2:
                         // Call the method to handle user login
-                        User.handleLogin(connect);
+                       user.handleLogin();
                         break;
                     case 3:
                         // Exit the application

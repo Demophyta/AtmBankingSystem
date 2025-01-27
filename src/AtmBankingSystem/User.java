@@ -7,16 +7,19 @@ import java.sql.SQLException;
 import java.util.Scanner;
 
 public class User {
+    private final Connection connect;
     // A scanner object for reading user inputs from the console
     private static final Scanner scanner = new Scanner(System.in);
+    public User(Connection connect) {
+        this.connect = connect;
+    }
 
     /**
      * This method handles the login functionality.
      * Prompts the user for email and password, then validates them.
      *
-     * @param connect The database connection object
      */
-    public static void handleLogin(Connection connect) {
+    public void handleLogin() {
         System.out.println("Please login to continue.");
 
         // Reading the email and password from the user
@@ -24,10 +27,10 @@ public class User {
         String inputPassword = readInput("Password: ");
 
         // Validate the password against the stored password in the database
-        if (validatePasswordInput(connect, email, inputPassword)) {
+        if (validatePasswordInput( email, inputPassword)) {
             System.out.println("Login successful!");
             // If login is successful, show the account menu
-            Transaction.showAccountMenu(connect, email);
+            Transaction.showAccountMenu( connect, email);
         } else {
             // If login fails, inform the user
             System.out.println("Invalid email or password. Please try again.");
@@ -38,12 +41,11 @@ public class User {
      * This method validates the email and password input.
      * It queries the database for the stored password associated with the given email.
      *
-     * @param connect The database connection object
-     * @param email The email entered by the user
+     * @param email         The email entered by the user
      * @param inputPassword The password entered by the user
      * @return true if the input password matches the stored password, otherwise false
      */
-    public static boolean validatePasswordInput(Connection connect, String email, String inputPassword) {
+    public boolean validatePasswordInput(String email, String inputPassword) {
         // SQL query to fetch the password associated with the given email
         String query = "SELECT password FROM account WHERE email = ?";
         try (PreparedStatement stmt = connect.prepareStatement(query)) {
@@ -68,10 +70,8 @@ public class User {
      * This method handles the user registration process.
      * It prompts the user for details like full name, email, password, and phone number,
      * and then stores this information in the database if valid.
-     *
-     * @param connect The database connection object
      */
-    public static void handleRegistration(Connection connect) {
+    public void handleRegistration() {
         // Prompt the user for registration details
         String fullName = readInput("Full Name: ");
         String email = readInput("Email: ");

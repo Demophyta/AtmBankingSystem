@@ -1,4 +1,5 @@
 package AtmBankingSystem;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -16,6 +17,7 @@ public class Transaction {
      */
     public static void showAccountMenu(Connection connect, String email) {
         int choice;
+        Transaction transaction = new Transaction(); // Create an instance of Transaction
         do {
             System.out.println("1. Withdraw Money");
             System.out.println("2. Deposit Money");
@@ -25,15 +27,21 @@ public class Transaction {
             System.out.print("Enter your choice: ");
             choice = scanner.nextInt();
             scanner.nextLine(); // Consume leftover newline
-            handleAccountOperation(connect, choice, email); // Process the user's choice
+
+            // Process the user's choice using the instance
+            transaction.handleAccountOperation(connect, choice, email);
         } while (choice != 5);
         System.out.println("You have been logged out.");
     }
 
     /**
      * Handles the user's account operations based on their menu choice.
+     *
+     * @param connect the database connection
+     * @param choice  the user's choice
+     * @param email   the user's email
      */
-    private static void handleAccountOperation(Connection connect, int choice, String email) {
+    private void handleAccountOperation(Connection connect, int choice, String email) {
         switch (choice) {
             case 1:
                 withdraw(connect, email); // Perform withdrawal
@@ -61,7 +69,7 @@ public class Transaction {
      * @param connect the database connection
      * @param email   the user's email
      */
-    private static void withdraw(Connection connect, String email) {
+    private void withdraw(Connection connect, String email) {
         System.out.print("Enter amount to withdraw: ");
         double amount = scanner.nextDouble();
 
@@ -71,7 +79,6 @@ public class Transaction {
             return;
         }
 
-        // SQL queries for checking balance and updating account
         String checkBalanceQuery = "SELECT account_balance FROM account WHERE email = ?";
         String updateBalanceQuery = "UPDATE account SET account_balance = account_balance - ? WHERE email = ? AND account_balance >= ?";
 
@@ -83,7 +90,6 @@ public class Transaction {
                 if (rs.next()) {
                     double currentBalance = rs.getDouble("account_balance");
                     if (currentBalance >= amount) {
-                        // Deduct amount and update balance
                         updateStmt.setDouble(1, amount);
                         updateStmt.setString(2, email);
                         updateStmt.setDouble(3, amount);
@@ -106,21 +112,20 @@ public class Transaction {
      * @param connect the database connection
      * @param email   the user's email
      */
-    private static void deposit(Connection connect, String email) {
+    private void deposit(Connection connect, String email) {
         System.out.print("Enter amount to deposit: ");
         double amount = scanner.nextDouble();
 
-        // Validate deposit amount
         if (amount <= 0 || (amount % 500 != 0 && amount % 1000 != 0)) {
-            System.out.println("Invalid amount. Transfer amount must be in multiples of 500 or 1000.");
+            System.out.println("Invalid amount. Deposit amount must be in multiples of 500 or 1000.");
             return;
         }
 
         String query = "UPDATE account SET account_balance = account_balance + ? WHERE email = ?";
         try (PreparedStatement stmt = connect.prepareStatement(query)) {
-            stmt.setDouble(1, amount); // Set deposit amount
-            stmt.setString(2, email); // Set user's email
-            stmt.executeUpdate(); // Execute update query
+            stmt.setDouble(1, amount);
+            stmt.setString(2, email);
+            stmt.executeUpdate();
             System.out.println("Deposit successful.");
         } catch (SQLException e) {
             System.out.println("Error during deposit: " + e.getMessage());
@@ -133,13 +138,12 @@ public class Transaction {
      * @param connect the database connection
      * @param email   the sender's email
      */
-    private static void transfer(Connection connect, String email) {
+    private void transfer(Connection connect, String email) {
         System.out.print("Enter recipient email: ");
         String recipientEmail = scanner.next();
-        System.out.print("Enter amount to transfer (must be in multiples of 500 or 1000): ");
+        System.out.print("Enter amount to transfer: ");
         double amount = scanner.nextDouble();
 
-        // Validate transfer amount
         if (amount <= 0 || (amount % 500 != 0 && amount % 1000 != 0)) {
             System.out.println("Invalid amount. Transfer amount must be in multiples of 500 or 1000.");
             return;
@@ -147,78 +151,50 @@ public class Transaction {
 
         String balanceQuery = "SELECT account_balance FROM account WHERE email = ?";
         String deductQuery = "UPDATE account SET account_balance = account_balance - ? WHERE email = ? AND account_balance >= ?";
-        String transactionQuery = "INSERT INTO transactions (sender_email, recipient_email, amount, transaction_date, status) VALUES (?, ?, ?, ?, ?)";
-
+        String addQuery = "UPDATE account SET account_balance = account_balance + ? WHERE email = ?";
         try {
             connect.setAutoCommit(false);
 
-            // Check sender's balance
-            double currentBalance = 0;
-            try (PreparedStatement balanceStmt = connect.prepareStatement(balanceQuery)) {
+            try (PreparedStatement balanceStmt = connect.prepareStatement(balanceQuery);
+                 PreparedStatement deductStmt = connect.prepareStatement(deductQuery);
+                 PreparedStatement addStmt = connect.prepareStatement(addQuery)) {
+
                 balanceStmt.setString(1, email);
                 ResultSet rs = balanceStmt.executeQuery();
                 if (rs.next()) {
-                    currentBalance = rs.getDouble(1);
+                    double currentBalance = rs.getDouble("account_balance");
                     if (currentBalance < amount) {
                         System.out.println("Insufficient funds.");
-                        logTransaction(connect, email, recipientEmail, amount, "FAILED");
                         connect.rollback();
                         return;
                     }
-                } else {
-                    System.out.println("Sender account not found.");
-                    logTransaction(connect, email, recipientEmail, amount, "FAILED");
-                    connect.rollback();
-                    return;
                 }
-            }
 
-            // Deduct amount from sender
-            try (PreparedStatement deductStmt = connect.prepareStatement(deductQuery)) {
                 deductStmt.setDouble(1, amount);
                 deductStmt.setString(2, email);
                 deductStmt.setDouble(3, amount);
-                if (deductStmt.executeUpdate() == 0) {
-                    System.out.println("Failed to deduct amount.");
-                    logTransaction(connect, email, recipientEmail, amount, "FAILED");
-                    connect.rollback();
-                    return;
-                }
+                deductStmt.executeUpdate();
+
+                addStmt.setDouble(1, amount);
+                addStmt.setString(2, recipientEmail);
+                addStmt.executeUpdate();
+
+                connect.commit();
+                System.out.println("Transfer successful.");
             }
-
-            // Log the successful transaction
-            logTransaction(connect, email, recipientEmail, amount, "SUCCESS");
-
-            connect.commit(); // Commit transaction
-            System.out.println("Transfer successful.");
         } catch (SQLException e) {
             try {
-                connect.rollback(); // Rollback on error
-            } catch (SQLException rollbackEx) {
-                System.out.println("Error during rollback: " + rollbackEx.getMessage());
+                connect.rollback();
+            } catch (SQLException ex) {
+                System.out.println("Error during rollback: " + ex.getMessage());
             }
             System.out.println("Error during transfer: " + e.getMessage());
         } finally {
             try {
-                connect.setAutoCommit(true); // Restore auto-commit
-            } catch (SQLException ex) {
-                System.out.println("Error resetting auto-commit: " + ex.getMessage());
+                connect.setAutoCommit(true);
+            } catch (SQLException e) {
+                System.out.println("Error resetting auto-commit: " + e.getMessage());
             }
-        }
-    }
-
-    /**
-     * Logs a transaction in the transactions table.
-     */
-    private static void logTransaction(Connection connect, String senderEmail, String recipientEmail, double amount, String status) throws SQLException {
-        String transactionQuery = "INSERT INTO transactions (sender_email, recipient_email, amount, transaction_date, status) VALUES (?, ?, ?, ?, ?)";
-        try (PreparedStatement transactionStmt = connect.prepareStatement(transactionQuery)) {
-            transactionStmt.setString(1, senderEmail);
-            transactionStmt.setString(2, recipientEmail);
-            transactionStmt.setDouble(3, amount);
-            transactionStmt.setTimestamp(4, new java.sql.Timestamp(System.currentTimeMillis())); // Current date and time
-            transactionStmt.setString(5, status);
-            transactionStmt.executeUpdate();
         }
     }
 
@@ -228,17 +204,16 @@ public class Transaction {
      * @param connect the database connection
      * @param email   the user's email
      */
-    private static void checkBalance(Connection connect, String email) {
+    private void checkBalance(Connection connect, String email) {
         String query = "SELECT account_balance FROM account WHERE email = ?";
         try (PreparedStatement stmt = connect.prepareStatement(query)) {
-            stmt.setString(1, email); // Set email parameter
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    double balance = rs.getDouble("account_balance");
-                    System.out.println("Your current balance is: " + balance);
-                } else {
-                    System.out.println("Account not found.");
-                }
+            stmt.setString(1, email);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                double balance = rs.getDouble("account_balance");
+                System.out.println("Your current balance is: " + balance);
+            } else {
+                System.out.println("Account not found.");
             }
         } catch (SQLException e) {
             System.out.println("Error checking balance: " + e.getMessage());
